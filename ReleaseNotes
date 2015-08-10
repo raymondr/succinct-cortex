@@ -1,0 +1,561 @@
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.21
+
+Minor release, primarily for 1000 Genomes pipeline
+
+1. The 1000 Genomes Phase3 pipeline, essentially involves calling variants
+   per population (each population is ~100 people sequenced to ~6x),
+   then making a combined/union callset, then going back and genotyping
+   all samples at all sites. I've just made the following changes in this release
+
+   a) Previously, the raw callfiles for each population were combined, to make a massive
+      list of calls, with a lot of redundancy, all of which would get genotyped, dumped to VCF
+      and then finally the VCF would be cleaned up by removing duplicates etc etc.
+      Not only does this mean a lot of duplicate sites get multiply genotyped,
+      but it is a waste of time to re-map all the flanks to get coordinates, when we already know them!
+      So for Phase3 (and in this release), I combined the *VCFs* from each population, and removed redundancy there,
+      and produced a "sites only" VCF, with no genotype info.
+      I then create a graph just of the alleles called in this VCF.
+      I have added a new script:
+      scripts/1000genomes/final_step_genotype_and_dump_vcf_per_sample.pl
+      This takes a sample graph, overlaps with the set of bubbles, genotypes the sample,
+      and dumps a VCF, reusing the chr/pos etc info from the sites VCF.
+      This is MUCH faster (about 2 hours per sample, and all samples can be run in parallel).
+
+   b) I've modified the genotyping code, to be more robust when genotyping sites not called in that sample.
+
+
+2. I've added an experimental --high_diff option for use when each colour is a pool of samples. The idea is to
+   pull out potential high FST sites. Have a play if you're interested, I've been looking at the 1000 Genomes populations
+   with it, but this is beta/experimental code, and may be modified or even removed if I decide I don't trust the results.
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.20
+
+Minor changes
+
+1. I've changed the way VCFs are filtered slightly. For the independent
+   workflow, with >1 sample, it is possible to call different but overlapping
+   variants. The right thing to do here is to have a multiallelic site. That
+   is in development, but for now Cortex genotypes biallelic sites only 
+   when running the Bubble Caller and Path Divergence Caller. Therefore, sites
+   that overlap are marked as such in the FILTER field. In those cases where the
+   variants overlap but are consistent, I keep the longer one.
+
+   However for the joint workflow, this is not possible. Sites are called
+   jointly in the graph of all samples. It is possible to have overlapping sites
+   in the joint workflow, but it can only happen when (eg) at k=31 you call at A/C
+   SNP, and at k=61 you call a longer bubble that phases that A/C SNP and a subsequent
+   other SNP. In that case, there is no contradiction between these, and so I do not mark
+   overlaps.
+   
+
+2. Modified the --subsample option. Now it takes one argument, specifying what proportion
+   of reads to load. eg --subsample 0.8 will load 80% of reads.
+
+Bugfix:
+Thanks to Bayo Lau, who spotted that the VCF filtering was not working properly.
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.19
+
+Minor changes to functionality
+
+1. Error correction now outputs fastq, not fasta.
+2. A --subsample option is now available, so as you load
+   say 20x of fastq, you can dump binaries at 2x.4x,6x...20x.
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.18
+
+Bugfix release - this one is worth taking!
+
+1. Fixed a bug that Isaac Turner spotted when digging into some calls.
+   Essentially I had put a hard limit, preventing error-cleaning of contigs
+   longer than a SNP. This is in general not the right thing to do,
+   and for microbial samples prevents error cleaning from removing
+   low coverage contigs of the host DNA. 
+
+2. Richard Pearson and I spent some time improving the 
+   Cortex auto-cleaning threshold choice. If you use run_calls now,
+   it makes better choices of thresholds, which can lead to much
+   better calls, especially with heterogeneous datasets.
+   In OUTDIR/binaries/uncleaned run_calls now dumps a PDF for each sample
+   showing the kmer coverage distribution, and showing where it has drawn the threshold.
+
+3. Some fixes to the vcf filtering scripts which were being dump and removing
+   duplicate calls and marking them as overlapping. Entirely my fault for misusing
+   Isaac's script and not even reading the --help. Apologies to all.
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.17
+
+Bugfix release
+
+Fixed a bug, found by Holly Zheng, where when using 
+--successively_dump_cleaned_colours, if also using the 2nd column
+of the colourlist to give sample-ids, these were
+a) not being treated as sample ids
+b) being treated as part of the path to a file.
+
+Also took a fix from Swaine Chen fixing a crash in run_calls.pl
+
+Finally, fixed some small bugs in the commandline,
+which might have caused it to ignore commandline options in some cases
+(fun with GetOpts).
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.16
+
+Minor release.
+
+Early versions of new functions
+
+1. As part of the 1000 genomes project, I've developed a new Error correction
+   option (--err_correct) that (is quality aware and) corrects against a population graph (rather than using a reference,
+   or coverage). Results look good. I'm still working on it, and you can expect it to speed
+   up a lot in releases to come, but for now people need it, so I am releasing it.
+   Recommended use is first error correct your reads against a cleaned pool from a population,
+   and then build the graph, and error-clean and call etc as before. Right now it takes
+   fastq in and spits out fasta.  
+
+2. A simple --pan_genome_matrix option that takes in a fasta of known genes, and will report to you
+   what percent of the kmers in that gene are present in all your colours(samples).
+   typical use:  --pan_genome_matrix all_e_coli_genes.fasta --max_read_len 100000
+   will output a matrix showing which samples have which genes.
+
+Bugfixes
+
+1. Embarrassed that I fixed this a while back and did not release. process_calls was filtering out calls
+   where the ref allele did not match the ref-allele at that position in the reference, when they only
+   disagreed in case (ie lower case "a" in reference genome was being treated as different to "A").
+
+2. various memory leaks caught by valgrind
+
+3. Small bugfixes to the classifier
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.15
+
+Minor release
+
+Bugfixes:
+
+1. run_calls fixed so it now allows you to set the fastq offset if reading non-standard 
+   quality-encoded FASTQ
+
+2. run_calls fixed so it does not error clean if effective coverage is too low.
+   So if you set k to an unreasonably high level, and you have <5x kmer covg, it just won't clean
+   (on auto-clean - you can still force it)
+
+3. Fix the population filter R script to not break when a sample has zero data.
+  
+4. Bugfix in one of scripts, from Chunlin Xiao for case when ref colour is final colour
+
+5. If a variant flank maps confidently, but the flank maps with insertions or deletions in it,
+   there was previously a bug where this led to the wrong coordinate being assigned for the variant.
+   "Fix" for now is to filter these out (message goes to the log). I will implement a real fix,
+   but it's not that straightforward, as this introduces variants that were never directly called,
+   and have different interpretations in different workflows.
+
+6. Some bugfixes to the 1000 Genomes scripts, courtesy of Chunlin Xiao.
+
+Under-the-hood change
+
+ - Moved to using htslib to parse bamfiles - thanks to Isaac Turner for this.
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.14
+
+Bugfixes:
+
+1. Fixed a stack overflow causing a segfault, found by Alex Dilthey.
+   From the user's point of view: if you set --max_var_len too large,
+   things could blow up.
+
+2. Fixed a bug in the sample info in the metadata in the header of
+   Cortex binaries. Did not affect running of Cortex,
+   but Isaac Turner's cortex_binary_checker did throw a
+   warning/error when it saw it.
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.13
+
+====== New features:
+
+1. Support for reading gzipped FASTA and FASTQ
+2. Support for reading bam (ignores alignment information, just takes reads)
+
+Both features courtesy of Isaac Turner.
+As a result Cortex now has dependencies on samtools, and two libraries of Isaac's,
+all of which are bundled into the release. There is
+a bash script install.sh to run to compile all of these.
+
+
+
+======  Confusing change that may break your scripts/pipelines:
+
+Apologies for this everyone, but we have changed the convention by which
+colourlists are handled, as follows:
+
+In  v1.0.5.11 and earlier: all paths in the colourlist, and files within are treated as relative
+to the current working directory (obviously absolute paths also are allowed)
+
+**
+FROM THIS RELEASE ON: If a file contains a path, it is relative to the position of that file
+**
+Example: Suppose we have the following directory structure
+
+main/binaries/k31
+main/output
+main/filelists
+
+and we have this colourlist
+
+>cat main/zam_colourlist
+filelists/list_zam_binary1
+filelists/list_kingkong_binary1
+
+You see the paths in the colourlist are relative to where the colourlist is.
+
+Next:
+>cat filelists/list_zam_binary1
+../binaries/k31/zam.ctx
+>cat filelists/list_kingkong_binary1
+../binaries/k31/kingkong.ctx
+
+and again, in these files, the paths are relative to wherever these files are.
+See the manual for more details.
+
+===== UI changes:
+
+1. cortex_var option --format removed. Pass in FASTQ or FASTA and it gets handled automatically
+2. cortex_var option --max_read_len no longer needed for loading FASTA and FASTQ (but still needed for --gt)
+3. run_calls.pl option --format removed.
+4. If you want to pass in reference assemblies and find differences between them, use
+   --gt_assemblies yes
+   and run_calls will set a very low sequencing error rate on passing through to cortex_var
+
+====== Bugfixes:
+
+Fixes for run_calls and the VCF-dumping script process_calls.
+
+This release fixes
+
+1. A nasty int overflow bug found by me, Alex Dilthey and Chunlin Xiao which 
+   was leading to corrupted binary graphs.
+2. Various bugs-in-waiting related to int overflows - complete overhaul
+   of code to prevent these.
+3. a bug found and fixed by Brad Chapman (process_calls complaining
+   when it saw an N in one allele)
+4. a bug in run_calls, found by Janina Dordel, when running in completely de novo (--ref Absent)
+   mode (basically makes it impossible to use --ref Absent, many apologies, big oversight on my part). 
+   If you are going to run run_calls like that, you should take
+   this fix.
+5. A bug in error-cleaning which could lead to a crash, found and fixed by Andy Rimmer.
+6. A bug in setting of environment variables in process_calls, found and fixed by Ian Streeter.
+
+Many thanks to all who contributed.
+
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.12
+
+Internal
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.11
+
+Bugfix release:
+
+1. Something I have not advertised is the fact that in the last few releases,
+I have added a scripts/1000genomes directory, which contains scripts forming
+a template for running Cortex on a population of samples
+with large genomes - eg for running on hundreds of the 1000 Genomes samples.
+A PDF in that directory explains how you can do this.
+
+I'm releasing these without any guarantees for the moment, they 
+are to enable various collaborators in the 1000 Genomes Project to
+run Cortex on different populations.
+
+Thanks to Holly Zheng for finding an error in one of the scripts,
+the fix for which is the reason for this release.
+
+2. A few small array overflow bugfixes
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.10
+
+Bugfix release:
+Thanks to Akdes Serin for reporting a bug in run_calls.pl,
+where it fails to properly parse a log file.
+If you use run_calls, I advise migrating up to this release.
+Apologies for the inconvenience.
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.9
+
+Bugfix release:
+Thansk to Alex Dilthey for pointing out v1.0.5.8 had a bug
+in the support for old version of Cortex's binary file format.
+To the user this is all invisible, but in the last
+public release, a binary file stored the mean
+read length and sequence loaded into each colour.
+I have modified the file format twice since then,
+once to use uint64_t, not int for coverage,
+and once to add a lot of extra metadata
+(sample_id, what kind of error cleaning each
+colour underwent).
+
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.8
+
+Small modifications to Makefile, and to Install directions.
+Hopefully this will resolve the GSL install issues some
+users have had.
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.7
+
+
+** Bugfixes **
+The main reason for this release is that I released 1.0.5.6 with a broken GSL, missing
+some files and therefore which would not compile. Apologies to those of you
+who downloaded it.
+
+** Performance Improvements **
+Another significant performance speedup, courtesy of Isaac Turner,
+seems to give 20-70% speed increase for loading, building and traversing graphs.
+For example, loading a GRC37 human reference genome binary at k=31 now
+takes 15 minutes, where it used to take 45 minutes.
+
+
++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.6
+
+** New Features **
+
+1. --print_novel_contigs  allows the user to specify a reference colour, and then will dump novel contigs
+   which have a (user-specified) maximum homology with the reference, and minimum length.
+
+2. Cortex now supports genotyping separately from discovery. Previous releases did discovery and genotyping 
+   at the same time. Now the user can do discovery (potentially separately on various samples),
+   and then pass the output from discovery back into Cortex to be genotyped (potentially on different samples
+   to those discovery was done on). The option is --gt. This is to allow indepdent discovery on different samples
+   and/or populations, followed by genotyping at a union set.
+
+3. The Path Divergence caller has been updated slightly. Previously it supported variant calling
+   comparing a colour (or union of colours) against a reference. It now also supports comparing
+   colour 1 against the reference, then colour 4, then colour 27, ..etc. The syntax is slightly ugly.
+
+4.  --sample_id - you can now specifyt a sample name when building a binary/graph. This information,
+    along with mean read length, total sequence in the graph, and what error cleaning has been done,
+    is stored in the graph. You now see this information on loading a binary file
+
+SUMMARY:
+Colour  SampleID        MeanReadLen     TotalSeq        ErrorCleaning   LowCovSupsThresh        LowCovNodesThresh       PoolagainstWhichCleaned
+0       my_dad       97   2887848273 UNCLEANED       -1      -1      undefined
+
+
+5.  process_calls.pl is much improved, about 100x faster, and has a sensible UI.
+
+6.  Cortex now has a new set of "workflows", and a wrapper script called run_calls.pl
+    which allows you to pass in an index file specifying which fastq go with which samples,
+    and then it will run a full multisample analysis, at multiple kmer values and multiple
+    cleaning thresholds, and make a union callset, and then genotype all samples at this union set.
+    The New user manual, on the Cortex website, will document all this.
+
+7. The population filter now supports haploid and diploid samples.
+
+
+** Compatibility Issues **
+
+From Version 1.0.5.6 the Cortex binary file format has changed - specifically the header now includes more
+metadata (eg for each colour, store sample-id, what error cleaning was done, in addition to mead read-length and total sequence loaded
+which were already there).
+
+a) The result of this is that v1.0.5.6 cOrtex and later can read old and new binaries, but only dump binaries in the new format.
+b) If you build a binary with a NEW version of Cortex, and then try to load it with an OLD version, it will not work.
+
+
+** Binary File Format **
+
+I'll stick a definition of this format up, either on the web or in the next release.
+
+
+
+** Removed features **
+
+1. detect_bubbles2 - I have removed legacy support for running two bubble calls one after the other
+   In my younger more innocent days, this was to support looking for homs and then hets, but
+   this was confusing discovery and genotyping.
+
+2. --remove_seq_errors has been removed. I recommend you use remove_low_coverage_supernodes
+
+
+** Performance **
+
+Performance improvement, courtesy of Isaac Turner - binary loading accelerated by about 20-30%.
+
+
+Main Contributers to this release
+Isaac Turner, Alex Dilthey, Zam Iqbal
+
+Thanks to:
+The many people who have beta tested, and sent in bug reports and fixes.
+Thanks especially to (I hope I don't forget anyone):
+Fernando Cruz, Henk den Bakker, Hideo Imamura, Janina Dordel, 
+Adam Auton, Xiao Chunlin,  Paul O'Neill , Houabin Hu
+
+
+
+
+
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.4,  v1.0.5.5
+Release candidates, seen only by Beta testers
+
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.3
+Version associated with the first Cortex publication,
+"De novo assembly and genotyping of variants using 
+colored de Bruijn graphs", 
+Z. Iqbal, M. Caccamo, I. Turner, P. Flicek, G. McVean
+(Nature Genetics).
+
+
+=== NEWS ====
+
+The most notable thing about this release is that it is enormous (in size).
+This is because for this release only, I am bundling the entire
+GNU Scientific Library with Cortex, because I have a dependency on it,
+and I haven't figured out how to either
+a) package an rpm so it triggers your system to automatically pull down the GSL
+b) just cut out the single GSL file that I actually need
+
+Apologies that this Cortex zip is so big, will sort this out in future releases
+
+New features:
+
+--remove_low_coverage_supernodes
+The error cleaning method described in our paper, gives better
+sensitivity than a simple coverage cutoff for kmers.
+
+-- Genotype calling with likelihoods
+If you specify the type of experiment (each colour is
+a diploid sample, or each colour is haploid), and
+also specify the genome length, Cortex will make genotype 
+calls and give a genotype confidence (difference between
+maximum log likelihood and next one).
+
+-- Allows user to enter estimated sequencing error rate
+
+--exclude_ref_bubbles
+New option which allows you to explicitly say you want to
+remove bubbles found in the reference; previously this was inferred
+to be true if you specified the reference colour with --ref_colour,
+but now there are situations when you might want to specify the reference
+colour without excluding ref-bubbles. See manual for details.
+
+--dumping of aligned subgraph
+Previous versions already supported aligning fasta/q to a graph and printing our coverage
+in the different colours. This version also allows the user to choose to dumpa new binary graph,
+just of the subgraph which is touched by the alignment process. Suppose you have a particular
+pair of alleles of interest, or gene, and you have a big whole-genome graph which is sometimes
+cumbersome. All you need to do is make a fasta of the regions you are interested in, and align it,
+and Cortex can dump the subgraph just of the region touched by the alignment.
+Future releases will allow you to dump "the region around" the aligned bit also.
+
+--genotype_site - This is beta code, used for the proof of concept
+genotyping of HLA-B in our paper. The syntax is ugly, and both the UI and 
+implementation may change in future releases.
+
+
+Bug Fixes:
+Various minor bug fixes.
+
+Outstanding bugs:
+ - Still have not sorted out compilation on the Intel compiler.
+
+New dependency:
+cortex_var now has a dependency on the GNU Scientific Library.
+If you try to compile and get an error like
+ "gsl-1.15/gsl/gsl_sf_gamma.h:25: fatal error: gsl/gsl_sf_result.h: No such file or directory"
+then ask your sysadmin to install:
+
+gsl-bin
+libgsl0ldbl
+libgsl0-dev
+
+
+
+Thanks to:
+Isaac Turner for very many bug reports and usability suggestions.
+Ian Streeter for pointing out a bug I thought I had fixed (now really fixed)
+
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.2
+
+Internal release - only ever seen by Beta testers
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5.1
+Bugfix - fixed a corner-case  where binary files dumped
+after loading paired-end fastq (using --pe_list) were 
+missing some nodes. Could manifest after loading 
+binaries and trying to traverse the graph. 
+
+Recommend users upgrade to this version.
+
+Test results:
+All unit tests pass, with valgrind also.
+See latest_test_results for details.
+
+Open issues:
+ - does not compile for Intel compiler on IA64.
+
+For internal use: matches changeset 403:514335d0e73d
+
+April 19th 2011
+
++++++++++++++++++++++++++++++++++++++++++++++
+v1.0.5
+First public/post-beta release of cortex_var.
+Supports: 
+ - arbitrary kmer
+ - removal of PCR duplicates, cutting reads at low quality bases or homopolymers on the fly
+ - de novo assembly of variants
+ - aligning of reads/references to population graph
+See manual for details!
+
+Open issues:
+ - does not compile for Intel compiler on IA64. 
+
+April 8th 2011
