@@ -76,14 +76,7 @@ int main(int argc, char **argv) {
     Finally read the list of nodes in the graph and write out the kmers to a file as binary
   **/
   FILE *kfp = fopen("kmers", "w");
-  FILE *cfp[number_of_colours];
-  uint32_t color_acc[number_of_colours];
-  for (i=0; i<number_of_colours;i++) {
-    char filename[10];
-    sprintf(filename, "color%d", i);
-    cfp[i] = fopen(filename, "w");
-    color_acc[i] = 0;
-  }
+  uint32_t color_acc;
 
   int index = 0;
   int coverage[number_of_colours]; // not used currently
@@ -110,13 +103,14 @@ int main(int argc, char **argv) {
 	fwrite(&k_plus_1, sizeof(uint64_t),1,kfp);
 	index++;
 	// now write out whether each color has this kmer edge
+	color_acc = 0;
 	for (j=0; j<number_of_colours;j++) {
 	  if (individual_edges_reading_from_binary[j] & mask)
-	    color_acc[j] |= 1 << index % 32;
-	  if ((index > 0 && index % 32 == 0)) {
+	    color_acc |= 1 << j % 32;
+	  if ((j > 0 && j % 32 == 0) || j == number_of_colours -1) {
 	    // write out bits when we have filled accumulator
-	    fwrite(&color_acc[j], sizeof(uint32_t), 1,  cfp[j]);
-	    color_acc[j] = 0;
+	    fwrite(&color_acc, sizeof(uint32_t), 1,  kfp);
+	    color_acc = 0;
 	  }
 	}
 
@@ -136,12 +130,4 @@ int main(int argc, char **argv) {
   }
   fclose(kfp);
   printf("%d\n", index);
-    
-  // flush out any remaining bits and close color files
-  for (i=0; i<number_of_colours; i++) {
-    if (index % 32 != 0) {
-      fwrite(&color_acc[i], sizeof(uint32_t), 1,  cfp[i]);
-      fclose(cfp[i]);
-    }
-  }
 }
